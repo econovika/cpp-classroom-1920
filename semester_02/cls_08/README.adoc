@@ -1,0 +1,212 @@
+= Концепты: C++ часть 2, семинар #8
+:source-highlighter: highlightjs
+:revealjs_hash: true
+:icons: font
+:customcss: https://codepen.io/anstreth/pen/WNvVedL.css
+:revealjs_theme: white
+
+ИТМО, 13.04.2020
+
+== Что нужно для этого семинара
+
+* Свежий компилятор C++
+** https://en.cppreference.com/w/cpp/compiler_support (Concepts)
+* Ключи компиляции
+** `-fconcepts` или `-fconcepts-ts` (опционально)
+
+=== Дисклеймер
+
+[WARNING]
+====
+Реализация концептов не является на 100% стабильной и корректной.
+
+Код, который компилируется одним компилятором, может не компилироваться другим.
+
+В случае вопросов пишите преподавателям.
+====
+
+==  Синтаксис концептов
+
+На случай, если вы что-то забыли.
+
+=== requires-clause/requires-expression
+
+`requires-clause` определяет требования декларации к типу:
+
+[source,cpp]
+----
+template <typename T>
+requires std::is_default_constructible_v<T>
+void foo(T t)
+requires std::is_copy_constructible_v<T>
+{
+    ...
+}
+----
+
+Можно писать сразу после шаблона (удобно при объявлении классов), можно после аргументов.
+
+Если то, что передается в `requires`, вычисляется в true, то требование считается выполненным.
+
+ifdef::backend-revealjs[=== !]
+
+`requires-expression` описывает требования к типу:
+
+[source,cpp]
+----
+template <typename T>
+constexpr bool can_do_good_v = requires(T const& t) {
+    t.do_good(); // требуем, чтобы do_good существовал
+};
+----
+
+При вычислении `requires-expression` возвращает true или false.
+
+У `requires-expression` можно указать произвольное количество параметров произвольных типов.
+Это удобно для проведения проверок над типом.
+
+Обратите внимание, что `can_do_good_v` -- это *не концепт*, а просто переменная.
+
+ifdef::backend-revealjs[=== !]
+
+`requires-expression` можно использовать вместе с `requires-clause`:
+
+[source,cpp]
+----
+// from the creators of 'noexcept noexcept',
+// 'export import' and 'const mutable'
+
+template <typename T>
+void produce_some_good(T const& t)
+requires requires { t.do_good(); }
+{
+  t.do_good();
+}
+----
+
+В `requires-expression` можно в использовать параметры из самой декларации.
+
+Cаму декларацию использовать нельзя.
+
+=== concept keyword
+
+Концепты являются `compile-time` предикатами над типами и значениями.
+
+[source,cpp]
+----
+template <typename T>
+concept always_false = false;
+
+template <typename T>
+concept is_pod = std::is_pod_v<T>;
+
+template <typename T>
+concept is_plain_receiver = is_pod<T> && requires(T t, int v) {
+    t.receive(v);
+};
+----
+
+ifdef::backend-revealjs[=== !]
+
+Концепты умеют принимать первый параметр явно или неявно:
+
+[source,cpp]
+----
+// явная передача
+template <typename T> requires is_plain_receiver<T> ...;
+// vs
+// неявная передача первого параметра
+template <is_plain_receiver T> ...;
+// vs
+// аналогично, без шаблонного параметра
+void foo(is_plain_receiver auto r) ...;
+----
+
+ifdef::backend-revealjs[=== !]
+
+Пример вызова концепта с несколькими параметрами с неявной передачей:
+[source,cpp]
+----
+template <typename T, size_t max_size, size_t max_alignment>
+concept small = sizeof(T) <= max_size
+             && alignof(T) <= max_alignment;
+
+template <Small<1024, 8> T> void foo();
+----
+
+=== Синтаксис requires-expression
+
+[source,cpp]
+----
+template <typename LHS, typename RHS>
+concept is_same = std::is_same_v<LHS, RHS>;
+----
+
+[source,cpp]
+----
+template <typename T>
+concept good_producer = requires(T const& t, std::string name) {
+
+    requires std::is_pod_v<T>; // требуем выполнения требования
+
+    typename T::good_result_t; // требуем наличие типа
+
+    T::good_field; // требуем наличие поля
+
+    t.do_good(name); // требуем наличие метода
+
+    // проверяем, что вернет метод
+    { t.do_good(name) } -> is_same<typename T::good_result>;
+};
+----
+
+Можно проверять выполнимость любых выражений.
+
+ifdef::backend-revealjs[=== !]
+
+Синтаксис для проверки возвращаемого типа выглядит так:
+
+[source,cpp]
+----
+{ expression } -> return_type_concept;
+
+
+// это примерно то же самое что
+requires return_type_concept<decltype(expression)>;
+----
+
+Т.е. используется неявная передача первого параметра.
+
+== Задача 1 (0.5 балла)
+
+Помните сериализацию из дорешки #5?
+
+При решении её без концептов требовалось много `enable_if`-ов.
+
+Концепты позволяют написать этот код гораздо более просто и понятно.
+
+Реализуйте тот же функционал с использованием концептов.
+
+=== Требования
+
+Что нужно реализовать:
+
+* Сериализацию pod-структур.
+* Сериализацию коллекций (vector, list). За коллекцию считаем:
+** Метод `size()`, возвращающий тип `size_type`
+** Метод `clear()`
+** Методы `begin()`, `end()`, возвращающие типы итераторов
+** Метод `insert`, принимающий итератор и значение для вставки
+* Сериализацию объектов с member-функциями serialize/deserialize и дефолтным конструктором
+
+=== Приоритет
+
+В случае конфликта у перегрузок следующие приоритеты:
+
+* Пользовательская сериализация (serialize/deserialize)
+* Тип-коллекция
+* pod-тип
+
+== Задача 2 (1 балл)
+
+TBD

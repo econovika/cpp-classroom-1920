@@ -1,0 +1,303 @@
+= Стандартная библиотека. Итераторы
+:source-highlighter: highlightjs
+:revealjs_hash: true
+:icons: font
+
+C++ часть 2, cеминар #3
+
+ИТМО, 24.02.2020
+
+== Замечания насчет семинара #2
+
+На основе часто встречающихся ошибок и забытых советов.
+
+=== Отсутствие переиспользования
+
+[source,cpp]
+----
+unqiue_ptr& operator=(unique_ptr&& other) {
+    if (this != &other) {
+        delete ptr_;
+        ptr_ = other.ptr_;
+        other.ptr_ = nullptr;
+    }
+    return *this;
+}
+----
+
+ifdef::backend-revealjs[=== !]
+
+[source,cpp]
+----
+unqiue_ptr& operator=(unique_ptr&& other) {
+    if (this != &other) {
+        reset();
+        ptr_ = other.release();
+    }
+    return *this;
+}
+----
+
+ifdef::backend-revealjs[=== !]
+
+Можно еще лучше!
+
+[source,cpp]
+----
+unqiue_ptr& operator=(unique_ptr&& other) {
+    reset(other.release());
+    return *this;
+}
+----
+
+=== Ссылки против значений
+
+Рассмотрим простой класс:
+
+[source,cpp]
+----
+class User {
+    User(string const& name): name(name) {}
+    User(string&& name): name(std::move(name)) {}
+};
+----
+
+ifdef::backend-revealjs[=== !]
+Теперь `user`-у нужен `surname`!
+
+[source,cpp]
+----
+class User {
+    User(string const& name, string const& surname): ...
+    User(string&& name,  string&& surname): ...
+
+    User(string const& name, string&& surname): ...
+    User(string&& name,  string const& surname): ...
+};
+----
+
+[.step]
+* Что будет, если будет 10 полей? Комбинаторный взрыв!
+* Что же делать?
+
+ifdef::backend-revealjs[=== !]
+Передавать по значению!
+
+[source,cpp]
+----
+class User {
+    User(string name, string surname):
+        name(move(name)), surname(move(surname) {}
+};
+----
+
+[.step]
+* Одна функция.
+* Покрывает все кейсы сразу.
+
+== План занятия
+
+- Полезные функции для работы с контейнерами
+- Инвалидация итераторов
+- Характеристики итераторов
+- Связь итераторов и range-based for loop
+
+////
+- Использование популярных контейнеров
+- Использование итераторов
+- Пользовательские итераторы
+////
+
+== Работа с итераторами
+
+* begin/cbegin/rbegin, end/cend/rend — работают с коллекциями и массивами
+** код получается более обобщенным
+
+ifdef::backend-revealjs[=== !]
+
+[.step]
+* next(Iterator it, diff_t step = 0) — возвращает копию итератора, сдвинутую на step шагов
+* advance(Iterator& it, diff_t step) — двигает итератор it на step шагов
+* make_reverse_iterator — создает итератор, двигающийся в противоположном направлении (если это возможно)
+* NB: Эти функции не range-safe!
+
+=== Пример 1
+
+[source,cpp]
+----
+int collection[]{1, 2, 3};
+// array<int, 3> collection{1, 2, 3};
+// vector<int> collection{1, 2, 3};
+// set<int> collection{1, 2, 3};
+
+using std::begin;
+using std::end;
+
+// begin/end работают со всем вышеперечисленным
+vector<int> copy(begin(collection), end(collection));
+----
+
+=== Пример 2
+
+[source,cpp]
+----
+class NotMyCollection;
+auto begin(NotMyCollection&) ...;
+auto end(NotMyCollection&) ...;
+
+struct MyCollection {
+    auto begin() ...;
+    auto end() ...;
+}
+----
+
+ifdef::backend-revealjs[=== !]
+
+[source,cpp]
+----
+MyCollection collection;
+// NotMyCollection collection;
+
+using std::begin;
+using std::end;
+
+// begin/end работают с пользовательскими типами
+vector<int> copy(begin(collection), end(collection));
+----
+
+== Характеристики итераторов
+
+Свойства итераторов выражаются с помощью следующих typedef-ов, определенных в классах-итераторах:
+
+ifdef::backend-revealjs[=== !]
+
+- `difference_type`
+- `value_type`
+- `pointer`
+- `reference`
+- `iterator_category`
+
+Если какой-то из этих параметров не имеет смысла (например, `value_type` у `output_iterator`), то вместо него нужно поставить void.
+
+== Инвалидация итераторов
+
+Модификация контейнера может привести к инвалидации итераторов, указывающих на его элементы.
+
+=== Пример
+
+[source,cpp]
+----
+vector<string> v {"hello"};
+auto it = v.begin();
+v.push_back("world");
+cout << *it << endl;
+----
+
+В чем проблема?
+
+[.step]
+- Вектор расширился, и кусочек памяти, указатель на который хранился в `it`, уже освобожден.
+- Инвалидироваться могут как все, так и часть итераторов.
+
+== Связь итераторов и range-based for loop
+
+"Умный" for loop, появившийся в C++11, является синтаксическим сахаром и работает через итераторы.
+
+[source,cpp]
+----
+multimap<int, string> map = {{1, "Lol"}, {1, "Kek"}};
+
+for (auto& i : map) {
+    cout << i.second << endl;
+}
+// <=>
+for (auto it = map.begin(); it != map.end(); ++it) {
+    auto& i = *it;
+    cout << i.second << endl;
+}
+----
+
+ifdef::backend-revealjs[=== !]
+
+*Следствие*: по любому объекту, похожему на контейнер, можно проитерироваться.
+
+ifdef::backend-revealjs[=== !]
+
+Чтобы по объекту класса `T` можно было итерироваться, нужно одно из двух:
+
+- наличие у него методов begin/end, которые можно вызвать (с учетом константности)
+- наличие свободных функций begin/end, которые можно вызвать на этом объекте (с учетом константности)
+
+== Задача 1 (0.5 балла)
+
+Напишите класс `range`, позволяющий работать с итераторами через `range-based for loop`.
+
+Публичный конструктор range должен принимать два итератора (начало и конец последовательности).
+
+ifdef::backend-revealjs[=== !]
+
+У `range` должен быть метод `reversed`, создающий новый `range`, но идущий в обратном порядке (если это возможно).
+
+Также должно существовать два фабричных метода, чтобы конструировать `range`:
+
+[source,cpp]
+----
+auto make_range(Iterator_t from, Iterator_t to)
+auto make_range(std::pair<Iterator_t, Iterator_t> pair)
+----
+
+=== Пример использования
+
+[source,cpp]
+----
+vector<int> v = {1, 2, 3, 4};
+
+for (auto& i: make_range(cbegin(v), cend(v)).reversed()) {
+    cout << i << endl;
+}
+
+multimap<int, string> map = {
+    {1, "Hello"}, {1, "Hi"},
+    {2, "Bye"}, {2, "Goodbye"}
+};
+
+for (auto& i: make_range(map.equal_range(2))) {
+    cout << i.second << endl;
+}
+----
+
+== Задача 2 (1 балл)
+
+Напишите класс, позволяющий бронировать комнаты для митингов.
+
+ifdef::backend-revealjs[=== !]
+
+Есть класс `Event`, представляющий собой событие. Он состоит из:
+
+- имени события
+- номера комнаты, в которой оно происходит
+- времени старта (целое число)
+- длительности
+
+ifdef::backend-revealjs[=== !]
+
+Необходимо написать класс `DaySchedule`, позволяющий организовывать события так, чтобы они не пересекались между собой.
+
+=== Пример использования
+
+[source, cpp]
+----
+DaySchedule schedule({42, 12, 24});
+
+Event ev("discuss", 42, 43200, 3600);
+schedule.try_add_event(ev);
+
+Event ev2("discuss2", 24, 41400, 7200);
+schedule.try_add_event(ev2);
+
+Event ev3("discuss3", 24, 32400, 3600);
+schedule.try_add_event(ev3);
+
+auto [begin, end] = schedule.get_events_at_moment(45000);
+std::vector<Events> plannedEvents(begin, end);
+----

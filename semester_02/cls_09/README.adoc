@@ -1,0 +1,506 @@
+= Работа с событиями в современном С\++ : C++ часть 2, семинар #9
+:source-highlighter: highlightjs
+:revealjs_hash: true
+:icons: font
+:customcss: https://codepen.io/anstreth/pen/WNvVedL.css
+:revealjs_theme: white
+
+Основано на лекции Валерия Лесина "bind/function"
+
+ИТМО, 06.04.2020
+
+== Задача: вызов callback’a
+
+Хотим написать API, чтобы вызывать пользовательскую функцию в заданный момент времени.
+
+=== Попытка №1
+
+[source,cpp]
+----
+void set_timer(void(*)(double time));
+----
+
+Проблемы?
+
+[.step]
+* Не передать данные в коллбэк.
+* Не передать функтор или мембер-функцию в качестве функции.
+
+=== Попытка №2
+
+[source,cpp]
+----
+void set_timer(
+    void(*)(double time, void* data),
+    void* data
+);
+----
+
+[.step]
+* Можно передать данные, но не typesafe. Нужно формировать структуру.
+* Функтор или объект можно передать в качестве данных.
+
+=== Попытка №3, 4
+
+[source,cpp]
+----
+template<typename T>
+void set_timer(double time, T* obj, void (T::*)(double time));
+
+template<typename F>
+void set_timer(double time, F const& f)
+requires requires { f(time); };
+----
+
+[.step]
+* На каждый тип F будет отдельная функция `set_timer`.
+* Нужно иметь правильную функцию в типе `Т`.
+** Можно и без правильной функции, но придется делать подходящий функтор.
+
+=== Попытка №5
+
+[source,cpp]
+----
+void set_timer(double /*time*/, ITimeHandler* handler);
+----
+
+* Одна реализация, но требует полиморфный интерфейс от класса.
+
+ifdef::backend-revealjs[=== !]
+
+Кажется, что ни одно из решений не является достаточно универсальным.
+
+Что же делать?
+
+== Немного магии. std::bind
+
+bind -- некоторый аналог каррирования для функций нескольких аргументов.
+
+Можно считать, что bind -- это адаптер для преобразования сигнатур функций.
+
+=== Пример работы bind
+
+Рассмотрим функцию `foo`:
+
+[source,cpp]
+----
+void foo(int a, string b, double c);
+----
+
+Посмотрим, что можно сделать с помошью `bind`:
+
+[source,cpp]
+----
+bind(foo, 1, "2", 3.)();                // foo(1, "2", 3.)
+bind(foo, 1, _1 , 3 )("2");             // foo(1, "2", 3.)
+// (!)
+bind(foo, _2, _3, _2)(2, 1, "2", 7);    // foo(1, "2", 1.)
+----
+
+Объект, полученный с помощью функции `bind`, мы будем называть `binder`.
+
+=== Плейсхолдеры
+
+Объекты `_1, _2, ...` находятся внутри неймспейса `std::placeholders`.
+
+Они позволяют задать соответствие между параметрами оригинальной функии и параметрами
+`binder`-а.
+
+[source,cpp]
+----
+// N-st argument of binder will go as M-st argument of foo
+
+bind(foo, ..., _N /* M-st bind argument */, ...)
+----
+
+=== Как избежать копирования? ref/cref
+
+bind копирует переданные параметры. Но этого можно избежать.
+
+[source,cpp]
+----
+void foo(vector<string> const& vstr, int value) {/*...*/}
+//..
+
+vector<string> v(1000);
+// makes copy
+auto a = bind(foo, v, _1);
+// no copy, used reference wrapper
+auto b = bind(foo, cref(v), _1);
+----
+
+=== Вызов методов
+
+Вызовы 13-14 держат объект, пока существует сам биндер (!).
+Бинд виртуальных функций работает корректно.
+
+[source,cpp,0]
+----
+struct T
+{
+void func(string str) {/*...*/}
+};
+
+T obj;
+shared_ptr<T> ptr(new T);
+
+string name = "Edgar";
+
+bind(&T::func, ref(obj), _1)(name);
+bind(&T::func, &obj    , _1)(name);
+bind(&T::func, obj     , _1)(name);
+bind(&T::func, ptr     , _1)(name);
+----
+
+=== Вопрос на засыпку
+
+[.small-code]
+[source,cpp]
+----
+void foo(std::string&& s1, std::string&& s2) {
+    assert(&s1 != &s2);
+}
+
+auto binder = std::bind(foo, _1, _1);
+
+binder("hello"); <1>
+binder(std::string{"hello"}); <2>
+
+std::string s{"hello"};
+binder(s); <3>
+----
+
+Как поведут себя функции?
+
+[.step]
+* Вызов 1 не упадет, поскольку будут сконструированы две временные строки.
+* Вызов 2 упадет, поскольку одна и та же временная строка будет передана дважды.
+* Вызов 3 не скомпилируется, т.к. `s` -- lvalue ref.
+
+=== Вложенность bind
+
+Как поступить, если параметр еще не зафиксирован, но его генератор известен?
+[source,cpp]
+----
+void foo(int x, int y);
+int  bar(int x);
+
+auto b = bind(foo, bind(bar, _1), _2);
+b(x, y); // foo(bar(x), y)
+----
+
+Это работает только тогда, когда сам генератор значения -- binder.
+
+А можно ли не фиксировать саму функцию?
+
+[source,cpp]
+----
+int bar2(int x);
+
+auto bb = bind(apply<int>(), _1, 42);
+bb(bar2);
+----
+
+== std::function
+
+Что такое `std::function`?
+
+[.step]
+* контейнер функции с фиксированным прототипом;
+* есть функции empty и clear;
+* можно использовать в условных выражениях.
++
+[source,cpp]
+----
+void foo(double a, double b) {/*...*/}
+
+//..
+function<void(int x, double y)> f = foo;
+f(3, 14);
+----
+
+== Синергический эффект bind & function
+
+Воспользуемся std::function для реализации нашего API:
+
+[source,cpp]
+----
+using timer_f = function<void(double/*time*/)>;
+
+// just one function for all clients
+void set_timer(double/*time*/, timer_f const& f);
+
+//..
+set_timer(10, bind(&window_t::redraw    , &wnd_));
+set_timer(10, bind(&beeper_t::make_sound, &beeper_, 440));
+set_timer(10, bind(&clock_t ::update    , &clock_ , _1));
+----
+
+=== Что мы получили?
+
+* Всего одна нешаблонная (!) реализация.
+* Допускаются дополнительные данные.
+* Не требуется определять дополнительные функторы.
+* Type safe.
+* Нет необходимости в полиморфном интерфейсе и виртуальных функциях (простор для оптимизатора).
+
+== Быстродействие
+
+Что стоит знать о влияние `bind/function` на перформанс?
+
+[.step]
+* Дополнительное время уходит на выделения памяти. А если их нет – на косвенные вызовы.
+* bind не выделяет память на хипе. Косвенный вызов функции может быть оптимизирован в bind тогда же, когда и без него.
+* function может выделять память под «большой» объект-функтор. Поэтому лишний раз не копируйте function.
+** Обычно реализована SOO для указателей на функции.
+* Если часть программы не является bottleneck, то использование там связки bind/function, вероятнее всего, не ухудшит ситуацию.
+
+
+////
+== Как могут работать placeholder’ы?
+
+Возможный путь реализации:
+
+[.small-code]
+[source,cpp]
+----
+template<class arg_t, class arg1_t, class arg2_t, class arg3_t>
+arg_t const&
+take_arg(arg_t const& arg, arg1_t const&, arg2_t const&, arg3_t const&)
+{
+    return arg;
+}
+
+template<size_t N, class arg1_t, class arg2_t, class arg3_t>
+typename N_th<N, arg1_t, arg2_t, arg3_t>::type const&
+take_arg(placeholder<N> const& pl, arg1_t const& arg1, arg2_t const& arg2, arg3_t const& arg3)
+{
+    return pl(arg1, arg2, arg3);
+}
+
+template<class arg1_t, class arg2_t, class arg3_t>
+auto
+binder_t::operator ()(arg1_t const& arg1, arg2_t const& arg2, arg3_t const& arg3) -> R
+{
+    // K - number of func_ parameters
+    func_(take_arg(pos1_, arg1, arg2, arg3),
+    ... ,
+    take_arg(posK_, arg1, arg2, arg3));
+}
+----
+
+////
+
+== Anonymous functions (C++11)
+[source,cpp]
+----
+// lambda functions syntax
+[capture](params) [-> return-type] {body}
+[capture] {body} // no params
+
+// samples
+[] (int x) { return x + global_y; }
+[] (int x) -> int
+{ z = x + global_y; return z; }
+
+// capture type
+[x, &y](){} // capture x by value, y by ref
+[=, &x](){} // capture everything by value, x by ref
+----
+[source,cpp]
+----
+
+// more samples
+matrix m;
+
+auto rot = [&m](point& p){ p *= m; }
+for_each(points.begin(), points.end(), rot);
+----
+
+
+=== Anonymous functions and bind
+
+Прежний пример с помощью lambda функций:
+
+[source,cpp]
+----
+typedef function<void(double/*time*/)> timer_f;
+// just one function for all clients
+void set_timer(timer_f const& f);
+
+set_timer(bind(&window_t::redraw, &wnd_));
+set_timer(bind(&beeper_t::make_sound, &beeper_, 440));
+set_timer(bind(&clock_t::update, &clock_, _1));
+
+// vs
+
+set_timer([&wnd_   ](double){ wnd_.redraw(); });
+set_timer([&beeper_](double){ beeper_.make_sound(440); });
+set_timer([&clock_ ](double time){ clock_.update(time); });
+----
+
+=== Some samples, part I
+[source,cpp]
+----
+struct some
+{
+    void set_time(time_t time);
+    void set_time(short hh, short mm, short ss);
+    //..
+};
+ 
+some s;
+std::function<void(time_t)> f;
+ 
+f = bind(static_cast<void (some::*)(time_t)>(&some::set_time), &s, std::placeholders::_1);
+// or
+f = [&s](time_t t){s.set_time(t);};
+----
+
+События для перегруженной функции
+
+=== Some samples, part II
+[source,cpp]
+----
+struct logger_t
+{
+    virtual void log(string filemame, unsigned line, string what){}
+    // ...
+};
+ 
+struct file_logger : logger_t {/*...*/};
+ 
+//..
+file_logger fl;
+ 
+add_log(bind(&logger_t::log, &fl, _1, _2, _3));
+// or
+add_log([&fl](string filename, unsigned line, string what) {
+    fl.log(filename, line, what);
+});
+----
+
+События для функций многих аргументов
+
+== С++20 lambda enhancements
+
+Здесь будут перечисленны не все улучшения, а только самые значимые.
+
+=== this vs capture list
+
+Есть ли проблемы с таким кодом?
+
+[.small-code]
+[source,cpp]
+----
+struct Widget {
+    void update() {}
+
+    auto make_updater() {
+        return [=]() { update(); }
+    }
+};
+
+std::function<void()> updater = Widget{}.make_updater();
+
+updater();
+----
+
+[.step]
+* Widget не доживет до вызова `updater()`, скорее всего это приведет к сегфолту.
+* `this` захватывается по значению из-за `=`, что часто приводит к недоразумениям.
+* Как это починить? Можно попробовать захватить весь объект по значению.
+
+ifdef::backend-revealjs[=== !]
+
+[.step]
+* Способ 1 (С++11)                                       .
++
+[source,cpp]
+----
+auto make_updater() {
+    auto self = *this;
+    return [=](){
+        self.update();
+    }
+}
+----
+* Способ 2 (C++14)
++
+[source,cpp]
+----
+auto make_updater() {
+    return [self = *this](){
+        self.update();
+    }
+}
+----
+* Способ 3 (C++17)
++
+[source,cpp]
+----
+auto make_updater() {
+    return [*this](){
+        update();
+    }
+}
+----
+
+ifdef::backend-revealjs[=== !]
+
+Начиная с C++17, в лямбду можно захватить по значению весь объект с помощью *this.
+
+Однако неявный захват указателя на `this` многим не нравился, а сделать его явным было нельзя:
+
+[source,cpp]
+----
+auto make_updater() {
+    return [=, this](){update();} // Error
+}
+----
+
+Это нельзя было сделать потому, что `this` и так захвачен по значению, и его "перезахват" был запрещен.
+
+Начиная с C++20 это разрешено.
+
+=== template for lambda
+
+Грань между лямбдами и функциями становится всё тоньше.
+
+Теперь даже локальные лямбды могут иметь шаблонные параметры:
+
+[source,cpp]
+----
+template <typename Collection>
+void foo(Collection& col) {
+    auto update = []<typename T>(T& t) {
+        T::update(t);
+    };
+
+    for (auto& elem : col) {
+        update(elem);
+    }
+}
+----
+
+Локальный класс с шаблоном завести нельзя, например.
+
+По-факту лямбы становятся локальными функциями, что позволяет в некоторых случаях
+делать публичный апи значительно меньше.
+
+== Bind vs Lambda
+
+Когда лучше bind?
+
+* Много (или длинные) параметры функций
+* Выражение из одного вызова
+
+Когда лучше Lambda?
+
+* Сложное выражение или их несколько
+* Перегрузка функции
+* Покрывает весь функционал bind (но не наоборот), но порой исходный код с bind более выразителен
+
+== Спасибо за внимание!
+
+Вопросы?
