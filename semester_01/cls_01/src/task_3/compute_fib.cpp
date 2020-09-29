@@ -1,4 +1,3 @@
-#include <iostream>
 #include <fstream>
 #include "compute_fib.hpp"
 
