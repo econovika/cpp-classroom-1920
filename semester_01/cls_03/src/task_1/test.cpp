@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cassert>
+#include "source.hpp"
 
 static void test_sum() {
     assert(sum({}, 0) == 0 && "Sum of empty array should be equal zero!");

@@ -1,5 +1,6 @@
 #include <cassert>
 #include <iostream>
+#include <cstring>
 #include "concat.hpp"
 
 void test_ints() {
