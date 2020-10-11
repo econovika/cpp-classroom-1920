@@ -19,9 +19,12 @@ void execute_command(bot_environment const* env, bot_state* state, char const* c
         throw std::runtime_error("Invalid input");
     bool eq = false;
     size_t length = 0;
-    for (const char *c = command; *c; ++c, ++length) {
+    for (const char *c = command; *c; ++c) {
+        if (*c == ' ')
+            continue;
         if (*c == 'h')
             eq = true;
+        length += 1;
     }
     if (length && eq)
         *(env->out) << "Hello!" << std::endl;
