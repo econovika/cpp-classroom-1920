@@ -33,28 +33,13 @@ struct lazy_string {
         return *this;
     };
 
-    [[nodiscard]] size_t get_size() const {
-        return shared_str->get_size();
-    };
+    [[nodiscard]] size_t get_size() const;
 
-    [[nodiscard]] char at(size_t i) const {
-        return shared_str->get_data()[i];
-    };
+    [[nodiscard]] char at(size_t i) const;
 
-    [[nodiscard]] char * c_str() const {
-        return shared_str->get_data();
-    }
+    [[nodiscard]] char * c_str() const;
 
-    friend lazy_string concat(lazy_string const& lhs, lazy_string const& rhs) {
-        shared_buffer buf = shared_buffer(lhs.get_size() + rhs.get_size() + 1);
-        for (size_t i = 0; i < lhs.get_size(); i++) {
-            if (lhs.at(i) != '\0')
-                buf.get_data()[i] = lhs.at(i);
-        }
-        for (size_t i = 0; i < rhs.get_size(); i++)
-            buf.get_data()[i + lhs.get_size()] = rhs.at(i);
-        return lazy_string(buf);
-    }
+    friend lazy_string concat(lazy_string const& lhs, lazy_string const& rhs);
 
 private:
     shared_buffer* shared_str;
