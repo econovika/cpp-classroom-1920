@@ -37,6 +37,10 @@ namespace cls_07 {
             return *this;
         };
 
+        char operator[](size_t idx) const {
+            return this->at(idx);
+        }
+
         [[nodiscard]] size_t get_size() const;
 
         [[nodiscard]] char at(size_t i) const;
@@ -51,3 +55,11 @@ namespace cls_07 {
 }
 
 size_t find(cls_07::lazy_string const &s, const char *what, size_t start_ix = 0);
+
+bool operator<(const cls_07::lazy_string &lhs, const cls_07::lazy_string &rhs);
+
+std::ostream &operator<<(std::ostream &os, cls_07::lazy_string const &ls);
+
+cls_07::lazy_string operator+(cls_07::lazy_string const &lhs, cls_07::lazy_string const &rhs);
+
+void operator+=(cls_07::lazy_string &lhs, cls_07::lazy_string const &rhs);
