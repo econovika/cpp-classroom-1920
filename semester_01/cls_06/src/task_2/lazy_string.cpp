@@ -5,19 +5,19 @@
 #include "lazy_string.hpp"
 
 
-size_t lazy_string::get_size() const {
+size_t cls_07::lazy_string::get_size() const {
     return shared_str->get_size();
 };
 
-char lazy_string::at(size_t i) const {
+char cls_07::lazy_string::at(size_t i) const {
     return shared_str->get_data()[i];
 };
 
-char * lazy_string::c_str() const {
+char * cls_07::lazy_string::c_str() const {
     return shared_str->get_data();
-}
+};
 
-lazy_string concat(lazy_string const& lhs, lazy_string const& rhs) {
+cls_07::lazy_string cls_07::concat(cls_07::lazy_string const& lhs, cls_07::lazy_string const& rhs) {
     shared_buffer buf = shared_buffer(lhs.get_size() + rhs.get_size() + 1);
     for (size_t i = 0; i < lhs.get_size(); i++) {
         if (lhs.at(i) != '\0')
@@ -25,5 +25,13 @@ lazy_string concat(lazy_string const& lhs, lazy_string const& rhs) {
     }
     for (size_t i = 0; i < rhs.get_size(); i++)
         buf.get_data()[i + lhs.get_size()] = rhs.at(i);
-    return lazy_string(buf);
-}
+    return cls_07::lazy_string(buf);
+};
+
+size_t find(cls_07::lazy_string const &s, const char *what, size_t start_ix) {
+    char *ptr = std::strstr(s.shared_str->get_data() + start_ix, what);
+    size_t size = s.shared_str->get_size();
+    if (size - start_ix > size || ptr == nullptr)
+        return cls_07::lazy_string::npos;
+    return ptr - s.shared_str->get_data();
+};
