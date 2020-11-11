@@ -1,12 +1,11 @@
-#include "my_ostream.hpp"
-#include "my_ostream_con.hpp"
-#include "my_ostream_file.hpp"
+#include "../task_1/my_ostream.hpp"
+#include "../task_1/my_ostream_con.hpp"
+#include "../task_2/my_ostream_file.hpp"
 #include "my_ostream_combo.hpp"
 
 #include <functional>
 #include <sstream>
 #include <iostream>
-#include <fstream>
 #include <cassert>
 
 static void test_with_replaced_cout(std::function<void(std::ostringstream const& sout)> const& action) {

@@ -1,9 +1,8 @@
-#include "my_ostream.hpp"
-#include <my_ostream_file.hpp>
+#include "../task_1/my_ostream.hpp"
+#include "my_ostream_file.hpp"
 
 #include <cassert>
 #include <iostream>
-#include <fstream>
 #include <type_traits>
 
 static std::string read_file_content(std::string const& name) {
@@ -12,9 +11,9 @@ static std::string read_file_content(std::string const& name) {
     return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 }
 
-static_assert(std::is_abstract<my_ostream>::value, "my_ostream should be abstract class!");
-static_assert(!std::is_copy_constructible<my_ostream_file>::value, "You shouldn't be able to copy my_ostream_file!");
-static_assert(!std::is_copy_assignable<my_ostream_file>::value, "You shouldn't be able to copy my_ostream_file!");
+static_assert(std::is_abstract<cls_08::my_ostream>::value, "my_ostream should be abstract class!");
+static_assert(!std::is_copy_constructible<cls_08::my_ostream_file>::value, "You shouldn't be able to copy my_ostream_file!");
+static_assert(!std::is_copy_assignable<cls_08::my_ostream_file>::value, "You shouldn't be able to copy my_ostream_file!");
 
 static void test_file_stream() {
     const char* file_name = "tmp.txt";
