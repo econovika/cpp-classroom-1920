@@ -71,6 +71,8 @@ namespace cls_10 {
                 delete cnt;
                 delete ptr;
             }
+            else
+                (*cnt)--;
         }
 
         explicit operator bool() const noexcept {
